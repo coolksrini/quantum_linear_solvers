@@ -22,6 +22,9 @@ from qiskit.circuit.library.arithmetic.piecewise_chebyshev import PiecewiseCheby
 from qiskit.circuit.library.arithmetic.exact_reciprocal import ExactReciprocal
 from qiskit.providers import Backend
 from qiskit.primitives import StatevectorEstimator, BackendEstimatorV2, BaseEstimatorV2
+from qiskit.quantum_info import SparsePauliOp
+from qiskit.transpiler import TranspileLayout
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
 from .observables import LinearSystemObservable
 from .matrices import NumPyMatrix
@@ -167,9 +170,10 @@ class HHL(LinearSolver):
         nl = qc.qregs[1].size
         na = qc.num_ancillas
 
+        circuit = transpile(qc, self.backend)
         # Norm observable
         observable = getOneOp(1) ^ getZeroOp(nl + na) ^ getIdentityOp(nb)
-        norm_2 = self.estimator.run([(qc, observable)]).result()[0].data.evs
+        norm_2 = self._run([(circuit, observable)]).result()[0].data.evs
         return np.real(np.sqrt(norm_2) / self.scaling)
 
     def _calculate_observable(
@@ -199,6 +203,7 @@ class HHL(LinearSolver):
         na = solution.num_ancillas
 
         # if the observable is given construct post_processing and observable_circuit
+        observable = None
         if ls_observable is not None:
             observable_circuit = ls_observable.observable_circuit(nb)
             post_processing = ls_observable.post_processing
@@ -210,7 +215,7 @@ class HHL(LinearSolver):
         else:
             observable = getIdentityOp(nb)
 
-        is_list = True
+
         if not isinstance(observable_circuit, list):
             is_list = False
             observable_circuit = [observable_circuit]
@@ -226,7 +231,7 @@ class HHL(LinearSolver):
             circuit_observables.append((circuit, ob))
 
         # evaluate
-        results_obj = self.estimator.run(circuit_observables).result()
+        results_obj = self._run(circuit_observables).result()
 
         results = [result_obj.data.evs for result_obj in results_obj]
 
@@ -234,6 +239,30 @@ class HHL(LinearSolver):
         results_processed = post_processing(results, nb, self.scaling)
 
         return results_processed, results
+
+    def _run(self, circuit_observables):
+        # Convert to an ISA circuit and layout-mapped observables.
+        if self.backend is not None:
+            pm = generate_preset_pass_manager(backend=self.backend, optimization_level=1)
+
+            inputs = []
+            for circuit, observable in circuit_observables:
+                isa_circuit = pm.run(circuit)
+
+                if isinstance(isa_circuit.layout, TranspileLayout):
+                    n_qubits = len(isa_circuit.layout._output_qubit_list)
+                    new_op = SparsePauliOp("I" * n_qubits)
+                    mapped_observable = new_op.compose(observable, qargs=list(range(observable.num_qubits)))
+                else:
+                    mapped_observable = observable.apply_layout(isa_circuit.layout)
+                inputs.append((isa_circuit, mapped_observable))
+        else:
+            inputs = circuit_observables
+
+        job = self._estimator.run(inputs)
+        # Use the job ID to retrieve your job data later
+        print(f">>> Job ID: {job.job_id()}")
+        return job
 
     def construct_circuit(
             self,
@@ -465,14 +494,13 @@ class HHL(LinearSolver):
         # construct circuit
         qc = self.construct_circuit(matrix, vector)
         solution.state = qc
-        solution.state_t = transpile(qc, self.backend)
-        solution.euclidean_norm = self._calculate_norm(solution.state_t)
+        solution.euclidean_norm = self._calculate_norm(solution.state)
 
         if isinstance(observable, List):
             observable_all, circuit_results_all = [], []
             for obs in observable:
                 obs_i, circ_results_i = self._calculate_observable(
-                    solution.state_t, obs, observable_circuit, post_processing
+                    solution.state, obs, observable_circuit, post_processing
                 )
                 observable_all.append(obs_i)
                 circuit_results_all.append(circ_results_i)
@@ -480,7 +508,7 @@ class HHL(LinearSolver):
             solution.circuit_results = circuit_results_all
         elif observable is not None or observable_circuit is not None:
             solution.observable, solution.circuit_results = self._calculate_observable(
-                solution.state_t, observable, observable_circuit, post_processing
+                solution.state, observable, observable_circuit, post_processing
             )
 
         return solution
