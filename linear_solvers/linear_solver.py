@@ -17,9 +17,10 @@ from typing import Union, Optional, List, Callable
 import numpy as np
 
 from qiskit import QuantumCircuit
-from qiskit.algorithms.algorithm_result import AlgorithmResult
+from qiskit_algorithms.algorithm_result import AlgorithmResult
 
-from .observables.linear_system_observable import LinearSystemObservable
+from .observables import LinearSystemObservable
+
 
 # pylint: disable=too-few-public-methods
 
@@ -36,6 +37,7 @@ class LinearSolverResult(AlgorithmResult):
 
         # Set the default to None, if the algorithm knows how to calculate it can override it.
         self._state: Optional[Union[QuantumCircuit, np.ndarray]] = None
+        self._state_t: Optional[Union[QuantumCircuit, np.ndarray]] = None
         self._observable: Optional[Union[float, List[float]]] = None
         self._euclidean_norm: Optional[float] = None
         self._circuit_results: Optional[
@@ -71,6 +73,20 @@ class LinearSolverResult(AlgorithmResult):
         self._state = state
 
     @property
+    def state_t(self) -> Union[QuantumCircuit, np.ndarray]:
+        """return either the circuit that prepares the solution or the solution as a vector"""
+        return self._state_t
+
+    @state_t.setter
+    def state_t(self, state_t: Union[QuantumCircuit, np.ndarray]) -> None:
+        """Set the solution state as either the circuit that prepares it or as a vector.
+
+        Args:
+            state: The new solution state.
+        """
+        self._state_t = state_t
+
+    @property
     def euclidean_norm(self) -> float:
         """return the euclidean norm if the algorithm knows how to calculate it"""
         return self._euclidean_norm
@@ -97,6 +113,10 @@ class LinearSolverResult(AlgorithmResult):
         results: Union[complex, List[complex], List[Union[complex, List[complex]]]],
     ):
         self._circuit_results = results
+
+    @state_t.setter
+    def state_t(self, value):
+        self._state_t = value
 
 
 class LinearSolver(ABC):

@@ -14,13 +14,14 @@
 
 from typing import Union, List
 import numpy as np
+from qiskit.quantum_info.operators.linear_op import LinearOp
 from scipy.sparse import diags
 
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
-from qiskit.opflow import I, Z, TensoredOp
 
 from .linear_system_observable import LinearSystemObservable
+from ..utils import getIdentityOp, getZeroOp, getOneOp
 
 
 class MatrixFunctional(LinearSystemObservable):
@@ -32,10 +33,9 @@ class MatrixFunctional(LinearSystemObservable):
 
             import numpy as np
             from qiskit import QuantumCircuit
-            from quantum_linear_solvers.linear_solvers.observables.matrix_functional import \
-            MatrixFunctional
+            from qiskit.algorithms.linear_solvers.observables.matrix_functional import
+             MatrixFunctional
             from qiskit.transpiler.passes import RemoveResetInZeroState
-            from qiskit.opflow import StateFn
 
             tpass = RemoveResetInZeroState()
 
@@ -70,7 +70,7 @@ class MatrixFunctional(LinearSystemObservable):
             exact = observable.evaluate_classically(init_state)
     """
 
-    def __init__(self, main_diag: float, off_diag: float) -> None:
+    def __init__(self, main_diag: float, off_diag: int) -> None:
         """
         Args:
             main_diag: The main diagonal of the tridiagonal Toeplitz symmetric matrix to compute
@@ -81,7 +81,7 @@ class MatrixFunctional(LinearSystemObservable):
         self._main_diag = main_diag
         self._off_diag = off_diag
 
-    def observable(self, num_qubits: int) -> Union[TensoredOp, List[TensoredOp]]:
+    def observable(self, num_qubits: int) -> Union[LinearOp, List[LinearOp]]:
         """The observable operators.
 
         Args:
@@ -90,11 +90,9 @@ class MatrixFunctional(LinearSystemObservable):
         Returns:
             The observable as a list of sums of Pauli strings.
         """
-        zero_op = (I + Z) / 2
-        one_op = (I - Z) / 2
         observables = []
         # First we measure the norm of x
-        observables.append(I ^ num_qubits)
+        observables.append(getIdentityOp(num_qubits))
         for i in range(num_qubits):
             j = num_qubits - i - 1
 
@@ -102,17 +100,15 @@ class MatrixFunctional(LinearSystemObservable):
             # TensoredOp([X, TensoredOp([])]).eval() ends up in infinite recursion
             if i > 0:
                 observables += [
-                    (I ^ j) ^ zero_op ^ TensoredOp(i * [one_op]),
-                    (I ^ j) ^ one_op ^ TensoredOp(i * [one_op]),
+                    getIdentityOp(j) ^ getZeroOp(1) ^ getOneOp(i),
+                    getIdentityOp(j) ^ getOneOp(1) ^ getOneOp(i),
                 ]
             else:
-                observables += [(I ^ j) ^ zero_op, (I ^ j) ^ one_op]
+                observables += [getIdentityOp(j) ^ getZeroOp(1), getIdentityOp(j) ^ getOneOp(1)]
 
         return observables
 
-    def observable_circuit(
-        self, num_qubits: int
-    ) -> Union[QuantumCircuit, List[QuantumCircuit]]:
+    def observable_circuit(self, num_qubits: int) -> Union[QuantumCircuit, List[QuantumCircuit]]:
         """The circuits to implement the matrix functional observable.
 
         Args:
@@ -153,15 +149,13 @@ class MatrixFunctional(LinearSystemObservable):
             raise ValueError("Solution probabilities must be given in list form.")
 
         # Calculate the value from the off-diagonal elements
-        off_val = 0.0
+        off_val = 0
         for i in range(1, len(solution), 2):
-            off_val += (solution[i] - solution[i + 1]) / (scaling**2)
-        main_val = solution[0] / (scaling**2)
+            off_val += (solution[i] - solution[i + 1]) / (scaling ** 2)
+        main_val = solution[0] / (scaling ** 2)
         return np.real(self._main_diag * main_val + self._off_diag * off_val)
 
-    def evaluate_classically(
-        self, solution: Union[np.ndarray, QuantumCircuit]
-    ) -> float:
+    def evaluate_classically(self, solution: Union[np.array, QuantumCircuit]) -> float:
         """Evaluates the given observable on the solution to the linear system.
 
         Args:

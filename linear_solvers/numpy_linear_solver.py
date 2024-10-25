@@ -17,8 +17,8 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Operator, Statevector
 
-from .linear_solver import LinearSolverResult, LinearSolver
-from .observables.linear_system_observable import LinearSystemObservable
+from .linear_solver import LinearSolver, LinearSolverResult
+from .observables import LinearSystemObservable
 
 # pylint: disable=too-few-public-methods
 
