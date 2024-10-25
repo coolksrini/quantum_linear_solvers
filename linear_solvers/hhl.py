@@ -121,6 +121,8 @@ class HHL(LinearSolver):
 
         if self._backend is not None:
             self._estimator = BackendEstimatorV2(backend=backend)
+            self._estimator.options.resilience_level = 1
+            self._estimator.options.default_shots = 5000
         else:
             self._estimator = StatevectorEstimator()
 
