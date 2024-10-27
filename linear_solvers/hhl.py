@@ -22,7 +22,7 @@ from qiskit.circuit.library.arithmetic.piecewise_chebyshev import PiecewiseCheby
 from qiskit.circuit.library.arithmetic.exact_reciprocal import ExactReciprocal
 from qiskit.providers import Backend
 from qiskit.primitives import StatevectorEstimator, BackendEstimatorV2, BaseEstimatorV2
-from qiskit.quantum_info import SparsePauliOp
+from qiskit.quantum_info import SparsePauliOp, Statevector
 from qiskit.transpiler import TranspileLayout
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
@@ -447,6 +447,25 @@ class HHL(LinearSolver):
             qc.append(phase_estimation.inverse(), ql[:] + qb[:])
         return qc
 
+    def _get_solution_vector(self, qc: QuantumCircuit) -> float:
+        """Get the solution vector of the solution.
+
+        Args:
+            qc: The quantum circuit preparing the solution x to the system.
+
+        Returns:
+            The vector of the solution.
+        """
+        sv = Statevector(qc)
+        nb = qc.qregs[0].size
+        nl = qc.qregs[1].size
+        na = qc.num_ancillas
+        start = 2 ** (nb + nl + na)
+        end = start + 2 ** nb
+        solution_vector = sv.data[start:end].real
+        norm = self._calculate_norm(qc)
+        return norm * solution_vector / np.linalg.norm(solution_vector)
+
     def solve(
             self,
             matrix: Union[List, np.ndarray, QuantumCircuit],
@@ -497,6 +516,7 @@ class HHL(LinearSolver):
         qc = self.construct_circuit(matrix, vector)
         solution.state = qc
         solution.euclidean_norm = self._calculate_norm(solution.state)
+        solution.solution_vector = self._get_solution_vector(solution.state)
 
         if isinstance(observable, List):
             observable_all, circuit_results_all = [], []

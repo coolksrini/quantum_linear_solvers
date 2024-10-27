@@ -14,6 +14,8 @@
 
 from abc import ABC, abstractmethod
 from typing import Union, Optional, List, Callable
+
+import numpy
 import numpy as np
 
 from qiskit import QuantumCircuit
@@ -42,6 +44,7 @@ class LinearSolverResult(AlgorithmResult):
         self._circuit_results: Optional[
             Union[complex, List[complex], List[Union[complex, List[complex]]]]
         ] = None
+        self._solution_vector: Optional[np.ndarray] = None
 
     @property
     def observable(self) -> Union[float, List[float]]:
@@ -98,6 +101,20 @@ class LinearSolverResult(AlgorithmResult):
         results: Union[complex, List[complex], List[Union[complex, List[complex]]]],
     ):
         self._circuit_results = results
+
+    @property
+    def solution_vector(
+        self,
+    ) -> numpy.ndarray:
+        """return the results from the circuits"""
+        return self._solution_vector
+
+    @solution_vector.setter
+    def solution_vector(
+        self,
+        results: np.ndarray,
+    ):
+        self._solution_vector = results
 
 
 class LinearSolver(ABC):
